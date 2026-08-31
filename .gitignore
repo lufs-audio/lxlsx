@@ -1,0 +1,4 @@
+/target
+/data/
+*.xlsx
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "processes": [
+    {
+      "description": "The six-block review control panel (LIVING, SUBSCRIPTIONS, CREDIT, DEBIT, WORK INCOME, ALL EXPENSES SINCE LAST TIME) rendered from finance.db to a brand-styled xlsx.",
+      "name": "Budget review control panel",
+      "slug": "snapshot",
+      "stages": [
+        "read",
+        "render",
+        "verify"
+      ]
+    }
+  ]
+}
