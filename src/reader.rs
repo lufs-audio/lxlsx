@@ -1,4 +1,4 @@
-//! SQLite reader: `finance.db` (v2 schema) → typed `Snapshot`.
+//! `SQLite` reader: `finance.db` (v2 schema) → typed `Snapshot`.
 //!
 //! A pure, deterministic read. Never writes the DB. Ports `budget-danialrami`'s
 //! `snapshot_sheet.py::build_model()` faithfully, then adapts the due-date
@@ -32,12 +32,47 @@ fn ordinal(n: i64) -> String {
     format!("{n}{suffix}")
 }
 
-/// Authored due label for a monthly item: `17th`, or `end of month` when no day.
-fn monthly_due(due_day: Option<i64>) -> String {
+/// Authored due label for a monthly item: `17th`, or `end of month` when no day or explicitly noted.
+fn monthly_due(due_day: Option<i64>, notes: &str) -> String {
+    if notes.trim().eq_ignore_ascii_case("end of month") {
+        return "end of month".to_string();
+    }
     match due_day {
         Some(d) => ordinal(d),
         None => "end of month".to_string(),
     }
+}
+
+/// Parse an annual due date from notes, e.g. "due May 5", "due Apr 3", "due Mar 11".
+fn parse_annual_due_from_notes(notes: &str) -> (Option<i64>, Option<i64>) {
+    let lower = notes.to_lowercase();
+    let Some(idx) = lower.find("due ") else {
+        return (None, None);
+    };
+    let rest = notes[idx + 4..].trim();
+    let mut parts = rest.split_whitespace();
+    let Some(month_str) = parts.next() else {
+        return (None, None);
+    };
+    let Some(day_str) = parts.next() else {
+        return (None, None);
+    };
+
+    let month = match_month(month_str);
+    let day_digits: String = day_str.chars().take_while(char::is_ascii_digit).collect();
+    let day = day_digits.parse::<i64>().ok();
+    (month, day)
+}
+
+fn match_month(s: &str) -> Option<i64> {
+    if s.len() < 3 {
+        return None;
+    }
+    let prefix = &s[..3];
+    MONTH_ABBR
+        .iter()
+        .position(|m| m.eq_ignore_ascii_case(prefix))
+        .and_then(|i| i64::try_from(i + 1).ok())
 }
 
 /// Authored due label for an annual item: `May 5th`; `5th` when no month known; "" when nothing.
@@ -174,7 +209,7 @@ pub fn build_snapshot(
     // LIVING — active monthly outflows except subscriptions.
     let living_rows = rows_to_map(
         conn,
-        "SELECT name, amount, due_day FROM recurring_items \
+        "SELECT name, amount, due_day, notes FROM recurring_items \
          WHERE is_active = 1 AND flow = 'outflow' \
            AND COALESCE(category,'') != 'SUBSCRIPTIONS' \
            AND COALESCE(cadence,'Monthly') = 'Monthly' \
@@ -186,14 +221,14 @@ pub fn build_snapshot(
         .map(|r| Recurring {
             name: as_str(r, "name"),
             amount: as_f64(r, "amount"),
-            due: monthly_due(as_i64_opt(r, "due_day")),
+            due: monthly_due(as_i64_opt(r, "due_day"), &as_str(r, "notes")),
         })
         .collect();
 
     // SUBSCRIPTIONS — active outflows in the SUBSCRIPTIONS category.
     let subs_rows = rows_to_map(
         conn,
-        "SELECT name, amount, cadence, due_day, due_month, deductible_pct \
+        "SELECT name, amount, cadence, due_day, notes, deductible_pct \
          FROM recurring_items \
          WHERE is_active = 1 AND flow = 'outflow' AND category = 'SUBSCRIPTIONS' \
          ORDER BY cadence DESC, name",
@@ -203,12 +238,14 @@ pub fn build_snapshot(
         .iter()
         .map(|r| {
             let cadence = as_str(r, "cadence");
-            let due_day = as_i64_opt(r, "due_day");
-            let due_month = as_i64_opt(r, "due_month");
+            let notes = as_str(r, "notes");
+            let (parsed_month, parsed_day) = parse_annual_due_from_notes(&notes);
+            let due_month = parsed_month;
+            let due_day = as_i64_opt(r, "due_day").or(parsed_day);
             let due = if cadence == "Annual" {
                 annual_due(due_month, due_day)
             } else {
-                monthly_due(due_day)
+                monthly_due(due_day, &notes)
             };
             let due_date = due_day
                 .map(|d| {
@@ -243,7 +280,7 @@ pub fn build_snapshot(
                 name: as_str(r, "name"),
                 balance,
                 minimum_payment: as_f64(r, "minimum_payment"),
-                payment_due: monthly_due(as_i64_opt(r, "payment_due_day")),
+                payment_due: monthly_due(as_i64_opt(r, "payment_due_day"), ""),
                 limit,
                 apr: as_f64(r, "apr"),
                 utilization: if limit > 0.0 {
@@ -258,7 +295,7 @@ pub fn build_snapshot(
     // DEBIT — checking + savings.
     let debit_rows = rows_to_map(
         conn,
-        "SELECT name, balance, notes FROM accounts WHERE type IN ('checking','savings') \
+        "SELECT name, balance FROM accounts WHERE type IN ('checking','savings') \
          ORDER BY is_business DESC, ABS(balance) DESC",
         &[],
     )?;
@@ -305,13 +342,21 @@ pub fn build_snapshot(
     let since_rows = rows_to_map(conn, &since_sql, &params)?;
     let since: Vec<Txn> = since_rows
         .iter()
-        .map(|r| Txn {
-            date: as_str(r, "date"),
-            payee: as_str(r, "payee"),
-            amount: as_f64(r, "amount"),
-            txn_type: as_str(r, "txn_type").to_lowercase(),
-            category: title_case(&as_str(r, "category")),
-            notes: String::new(),
+        .map(|r| {
+            let raw_date = as_str(r, "date");
+            let date = if raw_date.len() >= 10 {
+                raw_date[..10].to_string()
+            } else {
+                raw_date
+            };
+            Txn {
+                date,
+                payee: as_str(r, "payee"),
+                amount: as_f64(r, "amount"),
+                txn_type: as_str(r, "txn_type").to_lowercase(),
+                category: title_case(&as_str(r, "category")),
+                notes: String::new(),
+            }
         })
         .collect();
 

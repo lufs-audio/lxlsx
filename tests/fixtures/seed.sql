@@ -8,8 +8,7 @@ CREATE TABLE accounts (
     name TEXT NOT NULL,
     balance REAL NOT NULL DEFAULT 0,
     type TEXT NOT NULL,           -- checking | savings | credit
-    is_business INTEGER NOT NULL DEFAULT 0,
-    notes TEXT DEFAULT ''
+    is_business INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE credit_accounts (
@@ -28,7 +27,6 @@ CREATE TABLE recurring_items (
     category TEXT,
     subcategory TEXT,
     due_day INTEGER,
-    due_month INTEGER,
     cadence TEXT,                 -- Monthly | Annual
     deductible_pct INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
@@ -49,14 +47,14 @@ CREATE TABLE transactions (
 );
 
 -- ── Accounts ──
-INSERT INTO accounts (id, name, balance, type, is_business, notes) VALUES
-  ('acc-bus',    'LUFS Business Checking (6204)', 3.60,  'checking', 1, ''),
-  ('acc-pers1',  'Personal Checking 1 (1657)',     1.00,  'checking', 0, ''),
-  ('acc-pers2',  'Personal Checking 2 (8212)',     1.00,  'checking', 0, ''),
-  ('acc-save',   'Savings',                        1.00,  'savings',  0, ''),
-  ('acc-freedom','Chase Freedom',                  0.0,  'credit',   0, ''),
-  ('acc-apple',  'Apple Card',                     0.0,  'credit',   0, ''),
-  ('acc-vivint', 'Citizen Pay (Vivint)',           0.0,  'credit',   0, '');
+INSERT INTO accounts (id, name, balance, type, is_business) VALUES
+  ('acc-bus',    'LUFS Business Checking (6204)', 3.60,  'checking', 1),
+  ('acc-pers1',  'Personal Checking 1 (1657)',     1.00,  'checking', 0),
+  ('acc-pers2',  'Personal Checking 2 (8212)',     1.00,  'checking', 0),
+  ('acc-save',   'Savings',                        1.00,  'savings',  0),
+  ('acc-freedom','Chase Freedom',                  0.0,  'credit',   0),
+  ('acc-apple',  'Apple Card',                     0.0,  'credit',   0),
+  ('acc-vivint', 'Citizen Pay (Vivint)',           0.0,  'credit',   0);
 
 -- ── Credit accounts ──
 INSERT INTO credit_accounts (account_id, balance, credit_limit, minimum_payment, apr, payment_due_day) VALUES
@@ -81,19 +79,19 @@ INSERT INTO recurring_items (name, amount, category, subcategory, due_day, caden
   ('Therapist',             50.00, 'LIVING', 'Healthcare',  21, 'Monthly', 'outflow');
 
 -- ── SUBSCRIPTIONS (monthly then annual) ──
-INSERT INTO recurring_items (name, amount, category, subcategory, due_day, due_month, cadence, deductible_pct, flow) VALUES
-  ('Monthly Service Fee 1792',   1.00, 'SUBSCRIPTIONS', 'Banking',   8,  NULL, 'Monthly', 0,   'outflow'),
-  ('Monthly Service Fee 1657',  15.00, 'SUBSCRIPTIONS', 'Banking',  12,  NULL, 'Monthly', 0,   'outflow'),
-  ('Monthly Service Fee 8212',  15.00, 'SUBSCRIPTIONS', 'Banking',  23,  NULL, 'Monthly', 0,   'outflow'),
-  ('Monthly Service Fee 6204',  15.00, 'SUBSCRIPTIONS', 'Banking',  31,  NULL, 'Monthly', 0,   'outflow'),
-  ('exe.dev',                   40.63, 'SUBSCRIPTIONS', 'Dev',      14,  NULL, 'Monthly', 100, 'outflow'),
-  ('Google Drive',             100.00, 'SUBSCRIPTIONS', 'Storage',   5,  5,    'Annual',  100, 'outflow'),
-  ('Amazon Prime',             139.00, 'SUBSCRIPTIONS', 'Retail',    3,  4,    'Annual',  0,   'outflow'),
-  ('Costco Membership',         60.00, 'SUBSCRIPTIONS', 'Retail',    1,  5,    'Annual',  0,   'outflow'),
-  ('danialrami.com domain',     20.00, 'SUBSCRIPTIONS', 'Domains',  11,  3,    'Annual',  100, 'outflow'),
-  ('lufs.audio domain',        250.00, 'SUBSCRIPTIONS', 'Domains',  29,  3,    'Annual',  100, 'outflow'),
-  ('lufsaud.io domain',         70.00, 'SUBSCRIPTIONS', 'Domains',   3,  4,    'Annual',  100, 'outflow'),
-  ('Openrouter',               220.00, 'SUBSCRIPTIONS', 'AI',       NULL, NULL, 'Annual',  100, 'outflow');
+INSERT INTO recurring_items (name, amount, category, subcategory, due_day, cadence, deductible_pct, flow, notes) VALUES
+  ('Monthly Service Fee 1792',   1.00, 'SUBSCRIPTIONS', 'Banking',   8,  'Monthly', 0,   'outflow', ''),
+  ('Monthly Service Fee 1657',  15.00, 'SUBSCRIPTIONS', 'Banking',  12,  'Monthly', 0,   'outflow', ''),
+  ('Monthly Service Fee 8212',  15.00, 'SUBSCRIPTIONS', 'Banking',  23,  'Monthly', 0,   'outflow', ''),
+  ('Monthly Service Fee 6204',  15.00, 'SUBSCRIPTIONS', 'Banking',  31,  'Monthly', 0,   'outflow', ''),
+  ('exe.dev',                   40.63, 'SUBSCRIPTIONS', 'Dev',      14,  'Monthly', 100, 'outflow', ''),
+  ('Google Drive',             100.00, 'SUBSCRIPTIONS', 'Storage',   NULL, 'Annual',  100, 'outflow', 'due May 5'),
+  ('Amazon Prime',             139.00, 'SUBSCRIPTIONS', 'Retail',    NULL, 'Annual',  0,   'outflow', 'due Apr 3'),
+  ('Costco Membership',         60.00, 'SUBSCRIPTIONS', 'Retail',    NULL, 'Annual',  0,   'outflow', 'due May 1'),
+  ('danialrami.com domain',     20.00, 'SUBSCRIPTIONS', 'Domains',  NULL, 'Annual',  100, 'outflow', 'due Mar 11'),
+  ('lufs.audio domain',        250.00, 'SUBSCRIPTIONS', 'Domains',  NULL, 'Annual',  100, 'outflow', 'due Mar 29'),
+  ('lufsaud.io domain',         70.00, 'SUBSCRIPTIONS', 'Domains',   NULL, 'Annual',  100, 'outflow', 'due Apr 3'),
+  ('Openrouter',               220.00, 'SUBSCRIPTIONS', 'AI',       NULL, 'Annual',  100, 'outflow', '');
 
 -- ── WORK INCOME (recurring inflows) — deliberately empty in the golden ──
 -- (no rows; the block renders as header-only)
