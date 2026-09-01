@@ -97,3 +97,19 @@ fn counted_outflow_excludes_gift_and_internal_transfer() {
         expected
     );
 }
+
+#[test]
+fn exe_dev_subscription_and_work_expense() {
+    let conn = seeded_conn();
+    let snap = lxlsx::reader::build_snapshot(&conn, "2026-08-15", false).unwrap();
+
+    let exe = snap
+        .subscriptions
+        .iter()
+        .find(|s| s.name == "exe.dev")
+        .unwrap();
+    assert_eq!(exe.cadence, "Monthly");
+    assert_eq!(exe.due, "14th");
+    assert!(exe.work_expense);
+    assert!(!snap.subscriptions.iter().any(|s| s.name == "Apple One"));
+}

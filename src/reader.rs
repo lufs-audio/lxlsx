@@ -75,6 +75,32 @@ fn match_month(s: &str) -> Option<i64> {
         .and_then(|i| i64::try_from(i + 1).ok())
 }
 
+fn friendly_account_name(raw: &str) -> String {
+    match raw {
+        "BUS COMPLETE CHK (6204)" => "LUFS Business Checking (6204)".to_string(),
+        "TOTAL CHECKING (1657)" => "Personal Checking 1 (1657)".to_string(),
+        "TOTAL CHECKING (8212)" => "Personal Checking 2 (8212)".to_string(),
+        "CHASE SAVINGS (1792)" => "Savings".to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+fn friendly_credit_name(raw: &str) -> String {
+    if raw.starts_with("Chase Freedom") {
+        "Chase Freedom".to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+fn clean_category(cat: &str, payee: &str) -> String {
+    let p_lower = payee.to_lowercase();
+    if p_lower.contains("chase") && (cat.is_empty() || cat.eq_ignore_ascii_case("transfer")) {
+        return "Credit".to_string();
+    }
+    title_case(cat)
+}
+
 /// Authored due label for an annual item: `May 5th`; `5th` when no month known; "" when nothing.
 fn annual_due(due_month: Option<i64>, due_day: Option<i64>) -> String {
     match (due_month, due_day) {
@@ -277,7 +303,7 @@ pub fn build_snapshot(
             let balance = as_f64(r, "balance");
             let limit = as_f64(r, "credit_limit");
             CreditAccount {
-                name: as_str(r, "name"),
+                name: friendly_credit_name(&as_str(r, "name")),
                 balance,
                 minimum_payment: as_f64(r, "minimum_payment"),
                 payment_due: monthly_due(as_i64_opt(r, "payment_due_day"), ""),
@@ -302,7 +328,7 @@ pub fn build_snapshot(
     let debit: Vec<DebitAccount> = debit_rows
         .iter()
         .map(|r| DebitAccount {
-            name: as_str(r, "name"),
+            name: friendly_account_name(&as_str(r, "name")),
             balance: as_f64(r, "balance"),
             notes: as_str(r, "notes"),
         })
@@ -328,14 +354,19 @@ pub fn build_snapshot(
     let (acct_filter, acct_params): (String, Vec<&dyn rusqlite::ToSql>) = if show_all {
         (String::new(), vec![])
     } else {
-        // LUFS account filter is applied by the caller's data; here we keep "all"
-        // for the fixture's determinism, scoping is a documented simplification.
-        (String::new(), vec![])
+        (
+            "AND (a.is_business = 1 OR a.id = 'acc-bus' OR a.name LIKE '%6204%')".to_string(),
+            vec![],
+        )
     };
     let since_sql = format!(
         "SELECT t.date, t.payee, t.amount, t.txn_type, t.category, a.name AS account \
          FROM transactions t JOIN accounts a ON t.account_id = a.id \
-         WHERE t.date >= ? {acct_filter} ORDER BY t.date ASC"
+         WHERE t.date >= ? {acct_filter} \
+           AND t.txn_type != 'gift' \
+           AND t.txn_type != 'income' \
+           AND t.amount < 0 \
+         ORDER BY t.date ASC"
     );
     let mut params: Vec<&dyn rusqlite::ToSql> = vec![&last_met];
     params.extend(acct_params);
@@ -349,15 +380,18 @@ pub fn build_snapshot(
             } else {
                 raw_date
             };
+            let payee = as_str(r, "payee");
+            let cat = as_str(r, "category");
             Txn {
                 date,
-                payee: as_str(r, "payee"),
+                category: clean_category(&cat, &payee),
+                payee,
                 amount: as_f64(r, "amount"),
                 txn_type: as_str(r, "txn_type").to_lowercase(),
-                category: title_case(&as_str(r, "category")),
                 notes: String::new(),
             }
         })
+        .filter(is_counted_outflow)
         .collect();
 
     // Totals.
